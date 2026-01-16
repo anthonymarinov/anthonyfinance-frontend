@@ -168,7 +168,8 @@ export default function PortfolioSimulatorInput() {
         contribution_period: contributionPeriod,
         include_dividends: formData.include_dividends,
         is_drip_active: formData.is_drip_active,
-        annual_risk_free_return: riskFreeRate / 100
+        annual_risk_free_return: riskFreeRate / 100,
+        max_data_points: 150  // Limit data points from backend for performance
       };
 
       const response = await fetchWithTimeout(apiUrl, {
@@ -205,10 +206,13 @@ export default function PortfolioSimulatorInput() {
           
           setLoadingProgress(`Loading benchmark ${i + 1}/${selectedBenchmarks.length}: ${ticker}...`);
           
-          // Small delay between requests to let the browser breathe (helps on mobile)
-          if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
+          // Yield to browser between requests - use requestAnimationFrame for smoother UI
+          // This prevents the UI from freezing and helps mobile Safari stay responsive
+          await new Promise(resolve => {
+            requestAnimationFrame(() => {
+              setTimeout(resolve, 50);
+            });
+          });
           
           try {
             const benchmarkPayload = {
@@ -220,7 +224,8 @@ export default function PortfolioSimulatorInput() {
               contribution_period: contributionPeriod,
               include_dividends: formData.include_dividends,
               is_drip_active: formData.is_drip_active,
-              annual_risk_free_return: riskFreeRate / 100
+              annual_risk_free_return: riskFreeRate / 100,
+              max_data_points: 150  // Limit data points from backend for performance
             };
 
             const benchmarkResponse = await fetchWithTimeout(apiUrl, {

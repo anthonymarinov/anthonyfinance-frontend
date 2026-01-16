@@ -24,6 +24,31 @@ async function fetchWithTimeout(
   }
 }
 
+// Helper function to sample arrays to reduce memory usage
+// Keeps first, last, and evenly distributed points
+function sampleArrays<T>(
+  dates: string[],
+  values: T[],
+  maxPoints: number = 500
+): { dates: string[]; values: T[] } {
+  if (dates.length <= maxPoints) {
+    return { dates, values };
+  }
+  
+  const step = Math.ceil(dates.length / maxPoints);
+  const sampledDates: string[] = [];
+  const sampledValues: T[] = [];
+  
+  for (let i = 0; i < dates.length; i++) {
+    if (i % step === 0 || i === dates.length - 1) {
+      sampledDates.push(dates[i]);
+      sampledValues.push(values[i]);
+    }
+  }
+  
+  return { dates: sampledDates, values: sampledValues };
+}
+
 export default function PortfolioSimulatorInput() {
   // Use Next.js API route to proxy the request and avoid CORS
   const apiUrl = "/api/calculate";
@@ -205,10 +230,13 @@ export default function PortfolioSimulatorInput() {
           
           setLoadingProgress(`Loading benchmark ${i + 1}/${selectedBenchmarks.length}: ${ticker}...`);
           
-          // Small delay between requests to let the browser breathe (helps on mobile)
-          if (i > 0) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
+          // Yield to browser between requests - use requestAnimationFrame for smoother UI
+          // This prevents the UI from freezing and helps mobile Safari stay responsive
+          await new Promise(resolve => {
+            requestAnimationFrame(() => {
+              setTimeout(resolve, 50);
+            });
+          });
           
           try {
             const benchmarkPayload = {
@@ -239,11 +267,17 @@ export default function PortfolioSimulatorInput() {
             const benchmarkData: PortfolioSimulatorResponse = await benchmarkResponse.json();
             
             if (!isMountedRef.current) return;
+            
+            // Yield again after receiving large response to let browser process
+            await new Promise(resolve => setTimeout(resolve, 10));
+            
+            // Sample the data to reduce memory usage (especially important for 10-20 year periods)
+            const sampled = sampleArrays(benchmarkData.dates, benchmarkData.total_values, 500);
 
             const benchmark: BenchmarkData = {
               ticker,
-              dates: benchmarkData.dates,
-              total_values: benchmarkData.total_values,
+              dates: sampled.dates,
+              total_values: sampled.values,
               annualized_return: benchmarkData.annualized_return,
               sharpe_ratio: benchmarkData.sharpe_ratio,
               final_value: benchmarkData.final_value,

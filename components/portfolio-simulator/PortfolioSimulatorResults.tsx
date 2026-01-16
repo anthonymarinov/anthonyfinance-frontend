@@ -26,29 +26,52 @@ export default function PortfolioSimulatorResults({ data, benchmarks = [] }: Por
     const maxPoints = 100;
     const step = Math.ceil(data.dates.length / maxPoints);
     
-    return data.dates
-      .map((date, index) => {
-        const dataPoint: Record<string, string | number> = {
-          date: new Date(date).toLocaleDateString(),
-          total_value: data.total_values[index],
-          share_price: data.share_prices[index],
-          shares: data.shares[index],
-          accumulated_dividends: data.accumulated_dividends[index],
-        };
+    // Pre-build date lookup maps for each benchmark (O(n) instead of O(n²))
+    const benchmarkMaps = new Map<string, Map<string, number>>();
+    benchmarks.forEach((benchmark) => {
+      const dateMap = new Map<string, number>();
+      benchmark.dates.forEach((d, idx) => {
+        // Normalize date string for consistent matching
+        const dateKey = new Date(d).toISOString().split('T')[0];
+        dateMap.set(dateKey, benchmark.total_values[idx]);
+      });
+      benchmarkMaps.set(benchmark.ticker, dateMap);
+    });
+    
+    // Get indices to include (sampled + last point)
+    const indicesToInclude: number[] = [];
+    for (let i = 0; i < data.dates.length; i++) {
+      if (i % step === 0 || i === data.dates.length - 1) {
+        indicesToInclude.push(i);
+      }
+    }
+    
+    return indicesToInclude.map((originalIndex) => {
+      const date = data.dates[originalIndex];
+      const dateKey = new Date(date).toISOString().split('T')[0];
+      const displayDate = new Date(date).toLocaleDateString();
+      
+      const dataPoint: Record<string, string | number> = {
+        date: displayDate,
+        total_value: data.total_values[originalIndex],
+        share_price: data.share_prices[originalIndex],
+        shares: data.shares[originalIndex],
+        accumulated_dividends: data.accumulated_dividends[originalIndex],
+      };
 
-        // Add benchmark values at matching dates
-        benchmarks.forEach((benchmark) => {
-          const benchmarkIndex = benchmark.dates.findIndex(
-            (d) => new Date(d).toLocaleDateString() === new Date(date).toLocaleDateString()
-          );
-          if (benchmarkIndex !== -1) {
-            dataPoint[`benchmark_${benchmark.ticker}`] = benchmark.total_values[benchmarkIndex];
+      // Add benchmark values using pre-built maps (O(1) lookup)
+      benchmarks.forEach((benchmark) => {
+        const dateMap = benchmarkMaps.get(benchmark.ticker);
+        if (dateMap) {
+          const value = dateMap.get(dateKey);
+          if (value !== undefined) {
+            dataPoint[`benchmark_${benchmark.ticker}`] = value;
           }
-        });
+        }
+      });
 
-        return dataPoint;
-      })
-      .filter((_, index) => index % step === 0 || index === data.dates.length - 1);
+      return dataPoint;
+    });
   }, [data, benchmarks]);
 
   // Get benchmark color from AVAILABLE_BENCHMARKS

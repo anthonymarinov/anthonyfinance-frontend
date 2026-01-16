@@ -22,10 +22,7 @@ export default function PortfolioSimulatorResults({ data, benchmarks = [] }: Por
 
   // Memoize chart data transformation to prevent recalculation on every render
   const chartData = useMemo(() => {
-    // Sample data if there are too many points (keep every nth point for performance)
-    const maxPoints = 100;
-    const step = Math.ceil(data.dates.length / maxPoints);
-    
+    // Backend already samples data to ~150 points, so we just need to merge
     // Pre-build date lookup maps for each benchmark (O(n) instead of O(n²))
     const benchmarkMaps = new Map<string, Map<string, number>>();
     benchmarks.forEach((benchmark) => {
@@ -38,25 +35,16 @@ export default function PortfolioSimulatorResults({ data, benchmarks = [] }: Por
       benchmarkMaps.set(benchmark.ticker, dateMap);
     });
     
-    // Get indices to include (sampled + last point)
-    const indicesToInclude: number[] = [];
-    for (let i = 0; i < data.dates.length; i++) {
-      if (i % step === 0 || i === data.dates.length - 1) {
-        indicesToInclude.push(i);
-      }
-    }
-    
-    return indicesToInclude.map((originalIndex) => {
-      const date = data.dates[originalIndex];
+    return data.dates.map((date, index) => {
       const dateKey = new Date(date).toISOString().split('T')[0];
       const displayDate = new Date(date).toLocaleDateString();
       
       const dataPoint: Record<string, string | number> = {
         date: displayDate,
-        total_value: data.total_values[originalIndex],
-        share_price: data.share_prices[originalIndex],
-        shares: data.shares[originalIndex],
-        accumulated_dividends: data.accumulated_dividends[originalIndex],
+        total_value: data.total_values[index],
+        share_price: data.share_prices[index],
+        shares: data.shares[index],
+        accumulated_dividends: data.accumulated_dividends[index],
       };
 
       // Add benchmark values using pre-built maps (O(1) lookup)

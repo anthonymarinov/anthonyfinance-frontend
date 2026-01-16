@@ -1,8 +1,28 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { PortfolioSimulatorInputData, PortfolioSimulatorResponse, BenchmarkData, AVAILABLE_BENCHMARKS } from "@/types/PortfolioSimulatorTypes";
 import PortfolioSimulatorResults from "./PortfolioSimulatorResults";
+
+// Helper function to fetch with timeout (important for mobile)
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number = 60000
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 export default function PortfolioSimulatorInput() {
   // Use Next.js API route to proxy the request and avoid CORS
@@ -29,7 +49,23 @@ export default function PortfolioSimulatorInput() {
   const [results, setResults] = useState<PortfolioSimulatorResponse | null>(null);
   const [benchmarkResults, setBenchmarkResults] = useState<BenchmarkData[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  
+  // Ref to track if component is mounted and to abort pending requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef(true);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   const toggleBenchmark = (ticker: string) => {
     setSelectedBenchmarks(prev => 
@@ -103,9 +139,18 @@ export default function PortfolioSimulatorInput() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Abort any pending requests from previous submission
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setLoading(true);
+    setLoadingProgress("Calculating portfolio...");
     setError(null);
     setBenchmarkResults([]);
+    setResults(null);
 
     try {
       // Convert values to numbers and percentage to decimal for backend
@@ -126,69 +171,116 @@ export default function PortfolioSimulatorInput() {
         annual_risk_free_return: riskFreeRate / 100
       };
 
-      const response = await fetch(apiUrl, {
+      const response = await fetchWithTimeout(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
-      });
+      }, 90000); // 90 second timeout for main request
 
       if (!response.ok) {
         throw new Error('Failed to fetch data from API');
       }
 
       const data: PortfolioSimulatorResponse = await response.json();
+      
+      // Check if component is still mounted and request wasn't aborted
+      if (!isMountedRef.current) return;
+      
       setResults(data);
 
-      // Fetch benchmark data for selected ETFs
+      // Fetch benchmark data SEQUENTIALLY to reduce memory pressure on mobile
+      // This is slower but much more reliable on iOS Safari
       if (selectedBenchmarks.length > 0) {
-        const benchmarkPromises = selectedBenchmarks.map(async (ticker) => {
-          const benchmarkPayload = {
-            tickers: [ticker],
-            allocations: [100],
-            starting_value: startingValue,
-            period: formData.period,
-            personal_contributions: personalContributions,
-            contribution_period: contributionPeriod,
-            include_dividends: formData.include_dividends,
-            is_drip_active: formData.is_drip_active,
-            annual_risk_free_return: riskFreeRate / 100
-          };
-
-          const benchmarkResponse = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(benchmarkPayload),
-          });
-
-          if (!benchmarkResponse.ok) {
-            console.error(`Failed to fetch benchmark data for ${ticker}`);
-            return null;
+        const benchmarkDataArray: BenchmarkData[] = [];
+        
+        for (let i = 0; i < selectedBenchmarks.length; i++) {
+          const ticker = selectedBenchmarks[i];
+          
+          // Check if we should abort
+          if (!isMountedRef.current || abortControllerRef.current?.signal.aborted) {
+            break;
           }
+          
+          setLoadingProgress(`Loading benchmark ${i + 1}/${selectedBenchmarks.length}: ${ticker}...`);
+          
+          // Small delay between requests to let the browser breathe (helps on mobile)
+          if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          
+          try {
+            const benchmarkPayload = {
+              tickers: [ticker],
+              allocations: [100],
+              starting_value: startingValue,
+              period: formData.period,
+              personal_contributions: personalContributions,
+              contribution_period: contributionPeriod,
+              include_dividends: formData.include_dividends,
+              is_drip_active: formData.is_drip_active,
+              annual_risk_free_return: riskFreeRate / 100
+            };
 
-          const benchmarkData: PortfolioSimulatorResponse = await benchmarkResponse.json();
+            const benchmarkResponse = await fetchWithTimeout(apiUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(benchmarkPayload),
+            }, 60000); // 60 second timeout per benchmark
 
-          return {
-            ticker,
-            dates: benchmarkData.dates,
-            total_values: benchmarkData.total_values,
-            annualized_return: benchmarkData.annualized_return,
-            sharpe_ratio: benchmarkData.sharpe_ratio,
-            final_value: benchmarkData.final_value,
-            projected_annual_dividend_income: benchmarkData.projected_annual_dividend_income,
-          } as BenchmarkData;
-        });
+            if (!benchmarkResponse.ok) {
+              console.error(`Failed to fetch benchmark data for ${ticker}`);
+              continue;
+            }
 
-        const benchmarkDataArray = await Promise.all(benchmarkPromises);
-        setBenchmarkResults(benchmarkDataArray.filter((b): b is BenchmarkData => b !== null));
+            const benchmarkData: PortfolioSimulatorResponse = await benchmarkResponse.json();
+            
+            if (!isMountedRef.current) return;
+
+            const benchmark: BenchmarkData = {
+              ticker,
+              dates: benchmarkData.dates,
+              total_values: benchmarkData.total_values,
+              annualized_return: benchmarkData.annualized_return,
+              sharpe_ratio: benchmarkData.sharpe_ratio,
+              final_value: benchmarkData.final_value,
+              projected_annual_dividend_income: benchmarkData.projected_annual_dividend_income,
+            };
+            
+            benchmarkDataArray.push(benchmark);
+            
+            // Update results incrementally so user sees progress
+            setBenchmarkResults([...benchmarkDataArray]);
+            
+          } catch (benchmarkError) {
+            // Log but continue with other benchmarks
+            console.error(`Error fetching benchmark ${ticker}:`, benchmarkError);
+          }
+        }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      if (!isMountedRef.current) return;
+      
+      // Don't show error if it was an intentional abort
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+      
+      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      // Provide more helpful error message for timeout
+      if (errorMessage.includes('abort') || errorMessage.includes('timeout')) {
+        setError('Request timed out. Try selecting fewer benchmarks or a shorter time period.');
+      } else {
+        setError(errorMessage);
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+        setLoadingProgress("");
+      }
     }
   };
 
@@ -458,7 +550,7 @@ export default function PortfolioSimulatorInput() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Calculating...
+                <span className="text-sm">{loadingProgress || 'Calculating...'}</span>
               </span>
             ) : 'Calculate'}
           </button>

@@ -2,13 +2,13 @@
 
 import React, { useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { PortfolioSimulatorResponse } from "@/types/PortfolioSimulatorTypes";
+import { EtfSimulatorResponse } from "@/types/EtfSimulatorTypes";
 
-interface PortfolioSimulatorResultsProps {
-  data: PortfolioSimulatorResponse;
+interface EtfSimulatorResultsProps {
+  data: EtfSimulatorResponse;
 }
 
-export default function PortfolioSimulatorResults({ data }: PortfolioSimulatorResultsProps) {
+export default function EtfSimulatorResults({ data }: EtfSimulatorResultsProps) {
   // Validate data structure
   if (!data || !data.dates || !Array.isArray(data.dates)) {
     return (

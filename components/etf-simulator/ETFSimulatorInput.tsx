@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { PortfolioSimulatorInputData, PortfolioSimulatorResponse } from "@/types/PortfolioSimulatorTypes";
-import PortfolioSimulatorResults from "./ETFSimulatorResults";
+import { EtfSimulatorInputData, EtfSimulatorResponse } from "@/types/EtfSimulatorTypes";
+import EtfSimulatorResults from "./ETFSimulatorResults";
 
 export default function PortfolioSimulatorInput() {
   // Use Next.js API route to proxy the request and avoid CORS
@@ -11,7 +11,7 @@ export default function PortfolioSimulatorInput() {
   const [tickerInput, setTickerInput] = useState("");
   const [holdingInput, setHoldingInput] = useState("");
   
-  const [formData, setFormData] = useState<PortfolioSimulatorInputData>({
+  const [formData, setFormData] = useState<EtfSimulatorInputData>({
     tickers: [],
     holdings: [],
     shares_outstanding: 1,
@@ -24,7 +24,7 @@ export default function PortfolioSimulatorInput() {
     annual_risk_free_return: 4.5,
   });
   
-  const [results, setResults] = useState<PortfolioSimulatorResponse | null>(null);
+  const [results, setResults] = useState<EtfSimulatorResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +66,7 @@ export default function PortfolioSimulatorInput() {
       // Convert percentage to decimal for backend
       const payload = {
         ...formData,
-        annual_risk_free_return: formData.annual_risk_free_return / 100
+        annual_risk_free_return: Number(formData.annual_risk_free_return) / 100
       };
 
       const response = await fetch(apiUrl, {
@@ -81,7 +81,7 @@ export default function PortfolioSimulatorInput() {
         throw new Error('Failed to fetch data from API');
       }
 
-      const data: PortfolioSimulatorResponse = await response.json();
+      const data: EtfSimulatorResponse = await response.json();
       setResults(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -283,7 +283,7 @@ export default function PortfolioSimulatorInput() {
         </form>
       </div>
 
-      {results && <PortfolioSimulatorResults data={results} />}
+      {results && <EtfSimulatorResults data={results} />}
     </div>
   );
 }

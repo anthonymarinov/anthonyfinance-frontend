@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ThemeProvider, useTheme } from '@/contexts/ThemeContext';
 
@@ -57,7 +57,7 @@ describe('ThemeContext', () => {
       expect(screen.getByTestId('current-theme')).toHaveTextContent('dark');
     });
 
-    it('loads theme from localStorage', async () => {
+    it('loads theme from localStorage', () => {
       mockLocalStorage['theme'] = 'light';
       
       render(
@@ -66,12 +66,9 @@ describe('ThemeContext', () => {
         </ThemeProvider>
       );
       
-      // Theme loads in useEffect
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0));
-      });
-      
+      // Theme is loaded via lazy initialization
       expect(Storage.prototype.getItem).toHaveBeenCalledWith('theme');
+      expect(screen.getByTestId('current-theme')).toHaveTextContent('light');
     });
 
     it('sets data-theme attribute on document', async () => {
@@ -114,10 +111,8 @@ describe('ThemeContext', () => {
         </ThemeProvider>
       );
       
-      // Wait for initial theme to load
-      await act(async () => {
-        await new Promise(resolve => setTimeout(resolve, 0));
-      });
+      // Initial theme should be light from localStorage
+      expect(screen.getByTestId('current-theme')).toHaveTextContent('light');
       
       const toggleButton = screen.getByTestId('toggle-button');
       await userEvent.click(toggleButton);

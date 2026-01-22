@@ -9,18 +9,12 @@ interface EtfSimulatorResultsProps {
 }
 
 export default function EtfSimulatorResults({ data }: EtfSimulatorResultsProps) {
-  // Validate data structure
-  if (!data || !data.dates || !Array.isArray(data.dates)) {
-    return (
-      <div className="mt-8 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-        <p className="font-bold">Error: Invalid data received from API</p>
-        <p className="text-sm mt-1">Expected dates array but got: {JSON.stringify(data)}</p>
-      </div>
-    );
-  }
-
   // Memoize chart data transformation to prevent recalculation on every render
   const chartData = useMemo(() => {
+    // Return empty array if data is invalid
+    if (!data || !data.dates || !Array.isArray(data.dates)) {
+      return [];
+    }
     // Sample data if there are too many points (keep every nth point for performance)
     const maxPoints = 100;
     const step = Math.ceil(data.dates.length / maxPoints);
@@ -35,6 +29,16 @@ export default function EtfSimulatorResults({ data }: EtfSimulatorResultsProps) 
       }))
       .filter((_, index) => index % step === 0 || index === data.dates.length - 1);
   }, [data]);
+
+  // Validate data structure
+  if (!data || !data.dates || !Array.isArray(data.dates)) {
+    return (
+      <div className="mt-8 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <p className="font-bold">Error: Invalid data received from API</p>
+        <p className="text-sm mt-1">Expected dates array but got: {JSON.stringify(data)}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="mt-8 space-y-6">

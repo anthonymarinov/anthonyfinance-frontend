@@ -10,18 +10,12 @@ interface PortfolioSimulatorResultsProps {
 }
 
 export default function PortfolioSimulatorResults({ data, benchmarks = [] }: PortfolioSimulatorResultsProps) {
-  // Validate data structure
-  if (!data || !data.dates || !Array.isArray(data.dates)) {
-    return (
-      <div className="mt-8 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-        <p className="font-bold">Error: Invalid data received from API</p>
-        <p className="text-sm mt-1">Expected dates array but got: {JSON.stringify(data)}</p>
-      </div>
-    );
-  }
-
   // Memoize chart data transformation to prevent recalculation on every render
   const chartData = useMemo(() => {
+    // Return empty array if data is invalid
+    if (!data || !data.dates || !Array.isArray(data.dates)) {
+      return [];
+    }
     // Backend already samples data to ~150 points, so we just need to merge
     // Pre-build date lookup maps for each benchmark (O(n) instead of O(n²))
     const benchmarkMaps = new Map<string, Map<string, number>>();
@@ -61,6 +55,16 @@ export default function PortfolioSimulatorResults({ data, benchmarks = [] }: Por
       return dataPoint;
     });
   }, [data, benchmarks]);
+
+  // Validate data structure (after hooks to follow rules of hooks)
+  if (!data || !data.dates || !Array.isArray(data.dates)) {
+    return (
+      <div className="mt-8 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <p className="font-bold">Error: Invalid data received from API</p>
+        <p className="text-sm mt-1">Expected dates array but got: {JSON.stringify(data)}</p>
+      </div>
+    );
+  }
 
   // Get benchmark color from AVAILABLE_BENCHMARKS
   const getBenchmarkColor = (ticker: string): string => {
